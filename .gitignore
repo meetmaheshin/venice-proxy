@@ -59,3 +59,18 @@ payouts*.csv
 hashes.txt
 *.pem
 *.key
+
+# Non-Venice related files (keep locally but don't deploy)
+advanced_trading_signals_v6.pine
+checksum.py
+clean_simple_signals.pine
+curl-windows.txt
+curl.txt
+derive_address.py
+gas_fees.csv
+gas_fees_base.py
+image-request.json
+improved_trading_signals.pine
+send_veronica.py
+send_veronica_batch.py
+venice.py
