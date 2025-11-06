@@ -1,0 +1,14 @@
+version: "1"
+services:
+  - type: web
+    name: venice-proxy
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VENICE_API_KEY
+        fromDatabase: false
+        value: wvOH0kYOVHG7Nqgjd3Ft4nagJztR30fsOLgg5W2TaN

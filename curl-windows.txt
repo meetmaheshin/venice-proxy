@@ -1,0 +1,44 @@
+# Windows PowerShell version using real curl.exe:
+curl.exe --request POST --url "https://api.venice.ai/api/v1/image/generate" --header "Authorization: Bearer wvOH0kYOVHG7Nqgjd3Ft4nagJztR30fsOLgg5W2TaN" --header "Content-Type: application/json" --data "{\"cfg_scale\": 7.5, \"embed_exif_metadata\": false, \"format\": \"webp\", \"height\": 1024, \"hide_watermark\": false, \"inpaint\": \"<any>\", \"lora_strength\": 50, \"model\": \"lustify-sdxl\", \"negative_prompt\": \"Clouds, Rain, Snow\", \"prompt\": \"A curvy woman, nude and lounging in a sunlit pool, her hips tilted back in a sensual doggy position, water droplets clinging to her skin as she leans into the warmth of the afternoon sun.\", \"return_binary\": false, \"variants\": 1, \"safe_mode\": true, \"seed\": 0, \"steps\": 20, \"style_preset\": \"3D Model\", \"width\": 1024}"
+
+# Alternative using single quotes (if the above has issues):
+curl.exe --request POST --url 'https://api.venice.ai/api/v1/image/generate' --header 'Authorization: Bearer wvOH0kYOVHG7Nqgjd3Ft4nagJztR30fsOLgg5W2TaN' --header 'Content-Type: application/json' --data '{\"cfg_scale\": 7.5, \"embed_exif_metadata\": false, \"format\": \"webp\", \"height\": 1024, \"hide_watermark\": false, \"inpaint\": \"<any>\", \"lora_strength\": 50, \"model\": \"lustify-sdxl\", \"negative_prompt\": \"Clouds, Rain, Snow\", \"prompt\": \"\", \"return_binary\": false, \"variants\": 1, \"safe_mode\": true, \"seed\": 0, \"steps\": 20, \"style_preset\": \"3D Model\", \"width\": 1024}'
+
+# Using PowerShell backtick for line continuation:
+curl.exe --request POST `
+  --url "https://api.venice.ai/api/v1/image/generate" `
+  --header "Authorization: Bearer wvOH0kYOVHG7Nqgjd3Ft4nagJztR30fsOLgg5W2TaN" `
+  --header "Content-Type: application/json" `
+  --data "{`"cfg_scale`": 7.5, `"embed_exif_metadata`": false, `"format`": `"webp`", `"height`": 1024, `"hide_watermark`": false, `"inpaint`": `"<any>`", `"lora_strength`": 50, `"model`": `"lustify-sdxl`", `"negative_prompt`": `"Clouds, Rain, Snow`", `"prompt`": `"A curvy woman, nude and lounging in a sunlit pool, her hips tilted back in a sensual doggy position, water droplets clinging to her skin as she leans into the warmth of the afternoon sun.`", `"return_binary`": false, `"variants`": 1, `"safe_mode`": true, `"seed`": 0, `"steps`": 20, `"style_preset`": `"3D Model`", `"width`": 1024}"
+
+# Or using a JSON file (recommended for complex JSON):
+# Save JSON to file: image-request.json
+# Then use: curl.exe --request POST --url "https://api.venice.ai/api/v1/image/generate" --header "Authorization: Bearer wvOH0kYOVHG7Nqgjd3Ft4nagJztR30fsOLgg5W2TaN" --header "Content-Type: application/json" --data @image-request.json
+
+# Alternative: Using PowerShell's Invoke-RestMethod (native PowerShell):
+$headers = @{
+    "Authorization" = "Bearer wvOH0kYOVHG7Nqgjd3Ft4nagJztR30fsOLgg5W2TaN"
+    "Content-Type" = "application/json"
+}
+
+$body = @{
+    "cfg_scale" = 7.5
+    "embed_exif_metadata" = $false
+    "format" = "webp"
+    "height" = 1024
+    "hide_watermark" = $false
+    "inpaint" = "<any>"
+    "lora_strength" = 50
+    "model" = "lustify-sdxl"
+    "negative_prompt" = "Clouds, Rain, Snow"
+    "prompt" = "A curvy woman, nude and lounging in a sunlit pool, her hips tilted back in a sensual doggy position, water droplets clinging to her skin as she leans into the warmth of the afternoon sun."
+    "return_binary" = $false
+    "variants" = 1
+    "safe_mode" = $true
+    "seed" = 0
+    "steps" = 20
+    "style_preset" = "3D Model"
+    "width" = 1024
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "https://api.venice.ai/api/v1/image/generate" -Method POST -Headers $headers -Body $body

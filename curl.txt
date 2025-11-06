@@ -1,0 +1,23 @@
+curl --request POST \
+  --url https://api.venice.ai/api/v1/image/generate \
+  --header 'Authorization: Bearer wvOH0kYOVHG7Nqgjd3Ft4nagJztR30fsOLgg5W2TaN' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "cfg_scale": 7.5,
+  "embed_exif_metadata": false,
+  "format": "webp",
+  "height": 1024,
+  "hide_watermark": false,
+  "inpaint": "<any>",
+  "lora_strength": 50,
+  "model": "lustify-sdxl",
+  "negative_prompt": "Clouds, Rain, Snow",
+  "prompt": "",
+  "return_binary": false,
+  "variants": 1,
+  "safe_mode": true,
+  "seed": 0,
+  "steps": 20,
+  "style_preset": "3D Model",
+  "width": 1024
+}'

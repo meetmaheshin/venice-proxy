@@ -1,0 +1,502 @@
+//@version=6
+indicator(title="Advanced Trading Signals v6", shorttitle="Advanced Signals", overlay=true)
+
+// ===========================================
+// INPUTS - Enhanced Parameters
+// ===========================================
+
+// Moving Averages (Crypto Optimized - Faster)
+fast_ema_len = input.int(9, title="Fast EMA Length", minval=1)
+slow_ema_len = input.int(21, title="Slow EMA Length", minval=1)
+trend_sma_len = input.int(50, title="Trend SMA Length", minval=1)
+long_sma_len = input.int(100, title="Long Term SMA Length", minval=1)
+
+// RSI Settings
+rsi_length = input.int(14, title="RSI Length", minval=1)
+rsi_overbought = input.int(70, title="RSI Overbought Level", minval=50, maxval=100)
+rsi_oversold = input.int(30, title="RSI Oversold Level", minval=0, maxval=50)
+
+// MACD Settings
+macd_fast = input.int(12, title="MACD Fast Length", minval=1)
+macd_slow = input.int(26, title="MACD Slow Length", minval=1)
+macd_signal = input.int(9, title="MACD Signal Length", minval=1)
+
+// Parabolic SAR Settings
+sar_start = input.float(0.02, title="SAR Start", minval=0.001, step=0.001)
+sar_increment = input.float(0.02, title="SAR Increment", minval=0.001, step=0.001)
+sar_maximum = input.float(0.2, title="SAR Maximum", minval=0.01, step=0.01)
+use_sar_filter = input.bool(true, title="✓ Use SAR Trend Filter")
+
+// Volume Settings (Crypto - Volume less reliable)
+volume_ma_len = input.int(20, title="Volume MA Length", minval=1)
+volume_threshold = input.float(0.8, title="Volume Threshold Multiplier", minval=0.1, step=0.1)
+
+// Risk Management
+atr_length = input.int(14, title="ATR Length for S/L & T/P", minval=1)
+sl_multiplier = input.float(1.5, title="Stop Loss ATR Multiplier", minval=0.5, step=0.5)
+tp_multiplier = input.float(2.5, title="Take Profit ATR Multiplier", minval=1.0, step=0.5)
+
+// Signal Filters (CRYPTO OPTIMIZED)
+min_trend_strength = input.float(0.5, title="Minimum Trend Strength % (Higher = Stricter)", minval=0.0, maxval=5.0, step=0.1)
+signal_cooldown = input.int(10, title="Signal Cooldown Bars (Prevent Spam)", minval=1)
+min_bars_between_flip = input.int(15, title="Min Bars Between Opposite Signals", minval=3)
+require_all_confirmations = input.bool(false, title="Require ALL Confirmations (Very Strict)")
+
+// Advanced Filters - CRYPTO MODE (Most turned OFF for crypto volatility)
+use_price_action_filter = input.bool(false, title="✓ Use Price Action Filter")
+use_momentum_filter = input.bool(false, title="✓ Use Momentum Confirmation") 
+use_trend_quality_filter = input.bool(false, title="✓ Use Perfect EMA Alignment")
+min_volume_multiplier = input.float(0.8, title="Minimum Volume Spike (0.8x = Crypto)", minval=0.5, step=0.1)
+require_candle_close_confirmation = input.bool(false, title="✓ Require Strong Candle Close")
+min_risk_reward = input.float(0.5, title="Minimum Risk:Reward Ratio (0.5 = Crypto)", minval=0.3, step=0.1)
+
+// Display Options
+show_emas = input.bool(true, title="Show Moving Averages")
+show_levels = input.bool(true, title="Show S/L & T/P Levels")
+show_signals = input.bool(true, title="Show Buy/Sell Signals")
+show_info_table = input.bool(true, title="Show Info Table")
+show_entry_line = input.bool(true, title="Show Entry Line")
+show_historical_boxes = input.bool(false, title="Show Historical Trade Boxes")
+
+// ===========================================
+// CORE CALCULATIONS
+// ===========================================
+
+// Moving Averages
+ema_fast = ta.ema(close, fast_ema_len)
+ema_slow = ta.ema(close, slow_ema_len)
+sma_trend = ta.sma(close, trend_sma_len)
+sma_long = ta.sma(close, long_sma_len)
+
+// RSI
+rsi = ta.rsi(close, rsi_length)
+
+// MACD
+[macd_line, signal_line, histogram] = ta.macd(close, macd_fast, macd_slow, macd_signal)
+
+// Parabolic SAR
+sar = ta.sar(sar_start, sar_increment, sar_maximum)
+sar_bullish = close > sar  // Price above SAR = bullish trend
+sar_bearish = close < sar  // Price below SAR = bearish trend
+sar_flip_to_bull = ta.crossover(close, sar)  // SAR flips from resistance to support
+sar_flip_to_bear = ta.crossunder(close, sar)  // SAR flips from support to resistance
+
+// Volume Analysis
+volume_ma = ta.sma(volume, volume_ma_len)
+volume_spike = volume > (volume_ma * volume_threshold)
+
+// ATR for Risk Management
+atr = ta.atr(atr_length)
+
+// ===========================================
+// TREND ANALYSIS - Enhanced
+// ===========================================
+
+// Primary trend (multiple timeframe approach)
+primary_trend = close > sma_long ? 1 : close < sma_long ? -1 : 0
+
+// Secondary trend
+secondary_trend = ema_fast > ema_slow and ema_slow > sma_trend ? 1 :
+                 ema_fast < ema_slow and ema_slow < sma_trend ? -1 : 0
+
+// Trend strength calculation (with na protection)
+price_distance_from_trend = not na(sma_trend) and sma_trend != 0 ? math.abs((close - sma_trend) / sma_trend) * 100 : 0
+trend_strength_ok = price_distance_from_trend >= min_trend_strength
+
+// ===========================================
+// PRO TRADER FILTERS - Advanced Validation
+// ===========================================
+
+// 1. PRICE ACTION FILTER - Strong candle bodies
+candle_body = math.abs(close - open)
+candle_range = high - low
+body_percentage = candle_range > 0 ? (candle_body / candle_range) * 100 : 0
+strong_bullish_candle = close > open and body_percentage > 50  // Bull candle with 50%+ body (relaxed)
+strong_bearish_candle = close < open and body_percentage > 50  // Bear candle with 50%+ body (relaxed)
+
+// 2. MOMENTUM FILTER - Price moving in signal direction
+bullish_momentum = close > close[1] and close[1] > close[2]  // 3 consecutive higher closes
+bearish_momentum = close < close[1] and close[1] < close[2]  // 3 consecutive lower closes
+
+// 3. TREND QUALITY FILTER - EMAs properly aligned (OPTIONAL - can be toggled off)
+ema_sequence_bull = ema_fast > ema_slow and ema_slow > sma_trend and sma_trend > sma_long  // Perfect bull alignment
+ema_sequence_bear = ema_fast < ema_slow and ema_slow < sma_trend and sma_trend < sma_long  // Perfect bear alignment
+
+// 4. MULTI-TIMEFRAME CONFIRMATION - Relaxed (just check direction)
+htf_ema = ta.ema(close, 50)  // Higher timeframe proxy
+htf_bull = close > htf_ema  // HTF bullish (relaxed)
+htf_bear = close < htf_ema  // HTF bearish (relaxed)
+
+// 5. VOLATILITY FILTER - Not entering during extreme volatility
+atr_avg = ta.sma(atr, 14)
+volatility_normal = atr < (atr_avg * 1.5)  // ATR not too high
+
+// 6. VOLUME CONFIRMATION - Flexible (either strong OR increasing)
+volume_increasing = volume > volume[1] and volume[1] > volume[2]  // Volume building up
+volume_strong = volume > (volume_ma * min_volume_multiplier)  // Strong volume spike
+volume_ultra_confirmed = volume_strong or volume_increasing  // CHANGED: OR instead of AND
+
+// 7. PRICE REJECTION FILTER - No wicks against trade direction  
+bull_no_rejection = (high - close) < (candle_body * 0.5)  // Small upper wick for bulls
+bear_no_rejection = (close - low) < (candle_body * 0.5)  // Small lower wick for bears
+
+// 8. SUPPORT/RESISTANCE PROXIMITY - Relaxed
+highest_20 = ta.highest(high, 20)
+lowest_20 = ta.lowest(low, 20)
+not_at_resistance = close < (highest_20 * 0.98)  // At least 2% away from recent high (relaxed)
+not_at_support = close > (lowest_20 * 1.02)  // At least 2% away from recent low (relaxed)
+
+// ===========================================
+// SIGNAL CONDITIONS - Multiple Confirmations
+// ===========================================
+
+// Basic EMA Cross Conditions
+ema_bull_cross = ta.crossover(ema_fast, ema_slow)
+ema_bear_cross = ta.crossunder(ema_fast, ema_slow)
+
+// RSI CONDITIONS - Used as FILTERS, not triggers
+rsi_in_buy_zone = rsi > 35 and rsi < 70  // Not too low, not too high
+rsi_in_sell_zone = rsi < 65 and rsi > 30  // Not too high, not too low
+rsi_oversold_bounce = rsi < 35 and rsi > rsi[1] and close > open  // Stronger bounce from deeper oversold
+rsi_overbought_drop = rsi > 65 and rsi < rsi[1] and close < open  // Stronger drop from deeper overbought
+
+// MACD CONDITIONS - Used as CONFIRMATION, not standalone trigger
+macd_bull_cross = ta.crossover(macd_line, signal_line) and histogram > 0  // Must be above zero line
+macd_bear_cross = ta.crossunder(macd_line, signal_line) and histogram < 0  // Must be below zero line
+macd_confirms_bull = macd_line > signal_line and histogram > histogram[1]  // MACD trending up
+macd_confirms_bear = macd_line < signal_line and histogram < histogram[1]  // MACD trending down
+
+// PRICE STRUCTURE - Swing highs/lows confirmation
+higher_high = high > high[1] and high[1] > high[2]  // Making higher highs
+lower_low = low < low[1] and low[1] < low[2]  // Making lower lows
+bullish_structure = close > close[5] and close > open  // Price above 5 bars ago + bullish candle
+bearish_structure = close < close[5] and close < open  // Price below 5 bars ago + bearish candle
+
+// PRIMARY SIGNAL: EMA Cross is the MAIN trigger
+// CONFIRMATIONS: Must have supporting evidence from other indicators
+buy_primary_signal = ema_bull_cross  // Main trigger
+buy_confirmations = (macd_confirms_bull or macd_bull_cross) and rsi_in_buy_zone and bullish_structure  // All must agree
+buy_sar_confirmation = not use_sar_filter or sar_bullish  // SAR confirms bullish trend (optional)
+
+sell_primary_signal = ema_bear_cross  // Main trigger
+sell_confirmations = (macd_confirms_bear or macd_bear_cross) and rsi_in_sell_zone and bearish_structure  // All must agree
+sell_sar_confirmation = not use_sar_filter or sar_bearish  // SAR confirms bearish trend (optional)
+
+// RSI Conditions (avoid overbought/oversold extremes)
+rsi_not_overbought = rsi < rsi_overbought
+rsi_not_oversold = rsi > rsi_oversold
+rsi_bullish_momentum = rsi > 50 and rsi[1] <= 50  // RSI crossing above 50
+rsi_bearish_momentum = rsi < 50 and rsi[1] >= 50  // RSI crossing below 50
+
+// MACD Conditions
+macd_bullish = macd_line > signal_line and histogram > histogram[1]  // MACD above signal and histogram growing
+macd_bearish = macd_line < signal_line and histogram < histogram[1]  // MACD below signal and histogram declining
+
+// Volume Confirmation
+volume_confirmed = volume_spike
+
+// Trend Alignment Checks (RELAXED for crypto - allow neutral)
+trend_alignment_bull = primary_trend >= 0 and secondary_trend >= 0  // Relaxed: allow neutral
+trend_alignment_bear = primary_trend <= 0 and secondary_trend <= 0  // Relaxed: allow neutral
+
+// ANTI-WHIPSAW: Require stronger trend for opposite signals
+strong_bullish_trend = ema_fast > ema_slow and close > sma_trend  // Price above trend
+strong_bearish_trend = ema_fast < ema_slow and close < sma_trend  // Price below trend
+
+// ===========================================
+// SIGNAL GENERATION - Enhanced Logic
+// ===========================================
+
+// Signal cooldown tracking
+var int bars_since_last_signal = 999
+var int last_signal_type = 0  // 1 = buy, -1 = sell, 0 = none
+var int bars_since_buy = 999
+var int bars_since_sell = 999
+
+bars_since_last_signal := bars_since_last_signal + 1
+bars_since_buy := bars_since_buy + 1
+bars_since_sell := bars_since_sell + 1
+
+// Buy Signal Conditions - STRICT CONFIRMATION REQUIRED
+// PRIMARY: EMA cross + CONFIRMATIONS: MACD + RSI zone + Price structure + Strong trend + SAR
+buy_condition_basic = buy_primary_signal and buy_confirmations and strong_bullish_trend and buy_sar_confirmation
+buy_condition_rsi = rsi_not_overbought  // Don't buy when overbought
+buy_condition_macd = true  // Already checked in confirmations
+buy_condition_volume = true  // Skip volume check for crypto (unreliable)
+buy_condition_cooldown = bars_since_last_signal >= signal_cooldown
+buy_flip_protection = bars_since_sell >= min_bars_between_flip  // Prevent immediate flip after SELL
+buy_trend_strength = trend_strength_ok  // Require minimum trend strength
+
+// PRO FILTERS - Most disabled for crypto
+buy_price_action_ok = not use_price_action_filter or strong_bullish_candle
+buy_momentum_ok = not use_momentum_filter or bullish_momentum
+buy_trend_quality_ok = not use_trend_quality_filter or ema_sequence_bull
+buy_candle_close_ok = not require_candle_close_confirmation or bull_no_rejection
+buy_not_at_resistance = true  // Skip S/R check for crypto
+buy_volatility_ok = true  // Skip volatility check (crypto is always volatile)
+
+// Calculate risk:reward before entry
+potential_entry = close
+potential_sl = potential_entry - (atr * sl_multiplier)
+potential_tp = potential_entry + (atr * tp_multiplier)
+buy_risk = potential_entry - potential_sl
+buy_reward = potential_tp - potential_entry
+buy_rr_ratio = buy_risk > 0 ? buy_reward / buy_risk : 0
+buy_rr_ok = buy_rr_ratio >= min_risk_reward
+
+// FINAL BUY: Requires PRIMARY signal + ALL confirmations + filters
+final_buy_signal = buy_condition_basic and buy_condition_rsi and buy_condition_cooldown and buy_rr_ok and buy_flip_protection and buy_trend_strength
+
+// Sell Signal Conditions - STRICT CONFIRMATION REQUIRED
+// PRIMARY: EMA cross + CONFIRMATIONS: MACD + RSI zone + Price structure + Strong trend + SAR
+sell_condition_basic = sell_primary_signal and sell_confirmations and strong_bearish_trend and sell_sar_confirmation
+sell_condition_rsi = rsi_not_oversold  // Don't sell when oversold
+sell_condition_macd = true  // Already checked in confirmations
+sell_condition_volume = true  // Skip volume check for crypto (unreliable)
+sell_condition_cooldown = bars_since_last_signal >= signal_cooldown
+sell_flip_protection = bars_since_buy >= min_bars_between_flip  // Prevent immediate flip after BUY
+sell_trend_strength = trend_strength_ok  // Require minimum trend strength
+
+// PRO FILTERS - Most disabled for crypto
+sell_price_action_ok = not use_price_action_filter or strong_bearish_candle
+sell_momentum_ok = not use_momentum_filter or bearish_momentum
+sell_trend_quality_ok = not use_trend_quality_filter or ema_sequence_bear
+sell_candle_close_ok = not require_candle_close_confirmation or bear_no_rejection
+sell_not_at_support = true  // Skip S/R check for crypto
+sell_volatility_ok = true  // Skip volatility check (crypto is always volatile)
+
+// Calculate risk:reward before entry
+sell_potential_entry = close
+sell_potential_sl = sell_potential_entry + (atr * sl_multiplier)
+sell_potential_tp = sell_potential_entry - (atr * tp_multiplier)
+sell_risk = sell_potential_sl - sell_potential_entry
+sell_reward = sell_potential_entry - sell_potential_tp
+sell_rr_ratio = sell_risk > 0 ? sell_reward / sell_risk : 0
+sell_rr_ok = sell_rr_ratio >= min_risk_reward
+
+// FINAL SELL: Requires PRIMARY signal + ALL confirmations + filters
+final_sell_signal = sell_condition_basic and sell_condition_rsi and sell_condition_cooldown and sell_rr_ok and sell_flip_protection and sell_trend_strength
+
+// Update signal tracking (track both individual and last signal)
+if final_buy_signal
+    bars_since_last_signal := 0
+    bars_since_buy := 0
+    last_signal_type := 1
+else if final_sell_signal
+    bars_since_last_signal := 0
+    bars_since_sell := 0
+    last_signal_type := -1
+
+// Prevent intrabar flickering - only confirm on close
+confirmed_buy_signal = final_buy_signal and barstate.isconfirmed
+confirmed_sell_signal = final_sell_signal and barstate.isconfirmed
+
+// ===========================================
+// RISK MANAGEMENT - Dynamic Levels
+// ===========================================
+
+// Calculate Stop Loss and Take Profit levels
+var float buy_entry_price = na
+var float sell_entry_price = na
+var float buy_stop_loss = na
+var float buy_take_profit = na
+var float sell_stop_loss = na
+var float sell_take_profit = na
+var bool buy_active = false
+var bool sell_active = false
+
+// Update levels on new signals (clear opposite side)
+if confirmed_buy_signal
+    buy_entry_price := close
+    buy_stop_loss := close - (atr * sl_multiplier)
+    buy_take_profit := close + (atr * tp_multiplier)
+    buy_active := true
+    // Clear sell levels
+    sell_entry_price := na
+    sell_stop_loss := na
+    sell_take_profit := na
+    sell_active := false
+    
+if confirmed_sell_signal
+    sell_entry_price := close
+    sell_stop_loss := close + (atr * sl_multiplier)
+    sell_take_profit := close - (atr * tp_multiplier)
+    sell_active := true
+    // Clear buy levels
+    buy_entry_price := na
+    buy_stop_loss := na
+    buy_take_profit := na
+    buy_active := false
+
+// Auto-clear levels when TP or SL is hit
+if buy_active
+    if close >= buy_take_profit or close <= buy_stop_loss
+        buy_entry_price := na
+        buy_stop_loss := na
+        buy_take_profit := na
+        buy_active := false
+
+if sell_active
+    if close <= sell_take_profit or close >= sell_stop_loss
+        sell_entry_price := na
+        sell_stop_loss := na
+        sell_take_profit := na
+        sell_active := false
+
+// ===========================================
+// PLOTTING - Clean Visualization
+// ===========================================
+
+// Moving Averages
+plot(show_emas ? ema_fast : na, "Fast EMA", color=color.blue, linewidth=2)
+plot(show_emas ? ema_slow : na, "Slow EMA", color=color.orange, linewidth=2)
+plot(show_emas ? sma_trend : na, "Trend SMA", color=color.purple, linewidth=2)
+plot(show_emas ? sma_long : na, "Long SMA", color=color.gray, linewidth=3)
+
+// Parabolic SAR
+sar_color = sar_bullish ? color.new(color.green, 0) : color.new(color.red, 0)
+plot(show_emas ? sar : na, "Parabolic SAR", color=sar_color, style=plot.style_cross, linewidth=2)
+
+// Entry Point Line (White/Yellow) - Only show if entry line option is enabled
+plot(show_levels and show_entry_line and not na(buy_entry_price) and buy_active ? buy_entry_price : na, "Buy Entry", color=color.yellow, style=plot.style_stepline, linewidth=2)
+plot(show_levels and show_entry_line and not na(sell_entry_price) and sell_active ? sell_entry_price : na, "Sell Entry", color=color.yellow, style=plot.style_stepline, linewidth=2)
+
+// Support and Resistance Levels - Only show active trades
+plot(show_levels and not na(buy_stop_loss) and buy_active ? buy_stop_loss : na, "Buy S/L", color=color.red, style=plot.style_stepline, linewidth=2)
+plot(show_levels and not na(buy_take_profit) and buy_active ? buy_take_profit : na, "Buy T/P", color=color.green, style=plot.style_stepline, linewidth=2)
+plot(show_levels and not na(sell_stop_loss) and sell_active ? sell_stop_loss : na, "Sell S/L", color=color.red, style=plot.style_stepline, linewidth=2)
+plot(show_levels and not na(sell_take_profit) and sell_active ? sell_take_profit : na, "Sell T/P", color=color.green, style=plot.style_stepline, linewidth=2)
+
+// Trend Background
+trend_color = primary_trend == 1 ? color.new(color.green, 95) : 
+              primary_trend == -1 ? color.new(color.red, 95) : 
+              color.new(color.gray, 95)
+bgcolor(trend_color, title="Trend Background")
+
+// ===========================================
+// SIGNAL ALERTS
+// ===========================================
+
+// Buy Signal (use confirmed signals to prevent flickering)
+buy_plot = show_signals and confirmed_buy_signal
+plotshape(buy_plot, title="BUY SIGNAL", text="BUY", style=shape.labelup, location=location.belowbar, color=color.green, textcolor=color.white, size=size.normal)
+
+// Sell Signal (use confirmed signals to prevent flickering)
+sell_plot = show_signals and confirmed_sell_signal
+plotshape(sell_plot, title="SELL SIGNAL", text="SELL", style=shape.labeldown, location=location.abovebar, color=color.red, textcolor=color.white, size=size.normal)
+
+// ===========================================
+// ENHANCED INFO TABLE
+// ===========================================
+
+if show_info_table and barstate.islast
+    var table info_table = table.new(position.top_right, 3, 16, bgcolor=color.white, border_width=1)
+    
+    // Headers
+    table.cell(info_table, 0, 0, "Indicator", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 0, "Value", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+    table.cell(info_table, 2, 0, "Status", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+    
+    // Primary Trend
+    table.cell(info_table, 0, 1, "Primary Trend", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 1, primary_trend == 1 ? "BULL" : primary_trend == -1 ? "BEAR" : "NEUTRAL", 
+               text_color=primary_trend == 1 ? color.green : primary_trend == -1 ? color.red : color.gray, text_size=size.small)
+    table.cell(info_table, 2, 1, trend_strength_ok ? "✓" : "✗", 
+               text_color=trend_strength_ok ? color.green : color.red, text_size=size.small)
+    
+    // RSI
+    table.cell(info_table, 0, 2, "RSI", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 2, str.tostring(math.round(rsi, 1)), text_color=color.black, text_size=size.small)
+    rsi_status = rsi > 70 ? "OB" : rsi < 30 ? "OS" : rsi > 50 ? "BULL" : "BEAR"
+    rsi_color = rsi > 70 or rsi < 30 ? color.orange : rsi > 50 ? color.green : color.red
+    table.cell(info_table, 2, 2, rsi_status, text_color=rsi_color, text_size=size.small)
+    
+    // MACD
+    table.cell(info_table, 0, 3, "MACD", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 3, str.tostring(math.round(histogram, 4)), text_color=color.black, text_size=size.small)
+    macd_status = macd_bullish ? "BULL" : macd_bearish ? "BEAR" : "NEUT"
+    macd_color = macd_bullish ? color.green : macd_bearish ? color.red : color.gray
+    table.cell(info_table, 2, 3, macd_status, text_color=macd_color, text_size=size.small)
+    
+    // SAR (Parabolic SAR)
+    table.cell(info_table, 0, 4, "SAR Trend", text_color=color.black, text_size=size.small)
+    sar_diff = math.abs(close - sar)
+    table.cell(info_table, 1, 4, str.tostring(math.round(sar_diff, 2)), text_color=color.black, text_size=size.small)
+    sar_status = sar_bullish ? "BULL" : "BEAR"
+    sar_status_color = sar_bullish ? color.green : color.red
+    table.cell(info_table, 2, 4, sar_status, text_color=sar_status_color, text_size=size.small)
+    
+    // Volume
+    table.cell(info_table, 0, 5, "Volume", text_color=color.black, text_size=size.small)
+    vol_ratio = volume / volume_ma
+    table.cell(info_table, 1, 5, str.tostring(math.round(vol_ratio, 2)) + "x", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 2, 5, volume_spike ? "HIGH" : "NORM", 
+               text_color=volume_spike ? color.green : color.gray, text_size=size.small)
+    
+    // Last Signal
+    table.cell(info_table, 0, 6, "Last Signal", text_color=color.black, text_size=size.small)
+    signal_text = last_signal_type == 1 ? "BUY" : last_signal_type == -1 ? "SELL" : "NONE"
+    signal_color = last_signal_type == 1 ? color.green : last_signal_type == -1 ? color.red : color.gray
+    table.cell(info_table, 1, 6, signal_text, text_color=signal_color, text_size=size.small)
+    table.cell(info_table, 2, 6, str.tostring(bars_since_last_signal) + " bars", text_color=color.black, text_size=size.small)
+    
+    // PRO FILTERS STATUS - Show validation checks
+    table.cell(info_table, 0, 7, "══ SIGNAL FILTERS ══", bgcolor=color.orange, text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 7, "BUY", bgcolor=color.orange, text_color=color.white, text_size=size.small)
+    table.cell(info_table, 2, 7, "SELL", bgcolor=color.orange, text_color=color.white, text_size=size.small)
+    
+    table.cell(info_table, 0, 8, "Price Action", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 8, buy_price_action_ok ? "✓" : "✗", text_color=buy_price_action_ok ? color.green : color.red, text_size=size.small)
+    table.cell(info_table, 2, 8, sell_price_action_ok ? "✓" : "✗", text_color=sell_price_action_ok ? color.green : color.red, text_size=size.small)
+    
+    table.cell(info_table, 0, 9, "Momentum", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 9, buy_momentum_ok ? "✓" : "✗", text_color=buy_momentum_ok ? color.green : color.red, text_size=size.small)
+    table.cell(info_table, 2, 9, sell_momentum_ok ? "✓" : "✗", text_color=sell_momentum_ok ? color.green : color.red, text_size=size.small)
+    
+    table.cell(info_table, 0, 10, "Volume", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 10, buy_condition_volume ? "✓" : "✗", text_color=buy_condition_volume ? color.green : color.red, text_size=size.small)
+    table.cell(info_table, 2, 10, sell_condition_volume ? "✓" : "✗", text_color=sell_condition_volume ? color.green : color.red, text_size=size.small)
+    
+    table.cell(info_table, 0, 11, "Risk:Reward", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 11, str.tostring(math.round(buy_rr_ratio, 1)) + ":1", text_color=buy_rr_ok ? color.green : color.red, text_size=size.small)
+    table.cell(info_table, 2, 11, str.tostring(math.round(sell_rr_ratio, 1)) + ":1", text_color=sell_rr_ok ? color.green : color.red, text_size=size.small)
+    
+    // Risk Management - Show only if there's an ACTIVE trade
+    if (buy_active or sell_active) and (not na(buy_entry_price) or not na(sell_entry_price))
+        // Add visual separator
+        table.cell(info_table, 0, 12, "═══ ACTIVE TRADE ═══", bgcolor=color.blue, text_color=color.white, text_size=size.small)
+        table.cell(info_table, 1, 12, "", bgcolor=color.blue, text_size=size.small)
+        table.cell(info_table, 2, 12, "", bgcolor=color.blue, text_size=size.small)
+        
+        table.cell(info_table, 0, 13, "Entry Price", text_color=color.black, text_size=size.small)
+        entry_price = not na(buy_entry_price) ? buy_entry_price : not na(sell_entry_price) ? sell_entry_price : na
+        table.cell(info_table, 1, 13, not na(entry_price) ? str.tostring(math.round(entry_price, 2)) : "N/A", text_color=color.blue, text_size=size.small)
+        // Calculate profit/loss
+        current_pnl = buy_active ? ((close - buy_entry_price) / buy_entry_price * 100) : sell_active ? ((sell_entry_price - close) / sell_entry_price * 100) : 0
+        pnl_text = (current_pnl > 0 ? "+" : "") + str.tostring(math.round(current_pnl, 2)) + "%"
+        table.cell(info_table, 2, 13, pnl_text, text_color=current_pnl > 0 ? color.green : current_pnl < 0 ? color.red : color.gray, text_size=size.small)
+        
+        table.cell(info_table, 0, 14, "Stop Loss", text_color=color.black, text_size=size.small)
+        sl_price = not na(buy_stop_loss) ? buy_stop_loss : not na(sell_stop_loss) ? sell_stop_loss : na
+        table.cell(info_table, 1, 14, not na(sl_price) ? str.tostring(math.round(sl_price, 2)) : "N/A", text_color=color.red, text_size=size.small)
+        sl_distance = buy_active and not na(buy_stop_loss) ? close - buy_stop_loss : sell_active and not na(sell_stop_loss) ? sell_stop_loss - close : 0
+        table.cell(info_table, 2, 14, str.tostring(math.round(sl_distance, 2)), text_color=color.black, text_size=size.small)
+        
+        table.cell(info_table, 0, 15, "Take Profit", text_color=color.black, text_size=size.small)
+        tp_price = not na(buy_take_profit) ? buy_take_profit : not na(sell_take_profit) ? sell_take_profit : na
+        table.cell(info_table, 1, 15, not na(tp_price) ? str.tostring(math.round(tp_price, 2)) : "N/A", text_color=color.green, text_size=size.small)
+        tp_distance = buy_active and not na(buy_take_profit) ? buy_take_profit - close : sell_active and not na(sell_take_profit) ? close - sell_take_profit : 0
+        table.cell(info_table, 2, 15, str.tostring(math.round(tp_distance, 2)), text_color=color.black, text_size=size.small)
+
+// ===========================================
+// ALERTS
+// ===========================================
+
+alertcondition(confirmed_buy_signal, title="Strong Buy Signal", 
+              message="🟢 STRONG BUY SIGNAL\nPrice: {{close}}\nS/L: {{plot('Buy S/L')}}\nT/P: {{plot('Buy T/P')}}")
+
+alertcondition(confirmed_sell_signal, title="Strong Sell Signal", 
+              message="🔴 STRONG SELL SIGNAL\nPrice: {{close}}\nS/L: {{plot('Sell S/L')}}\nT/P: {{plot('Sell T/P')}}")
+
+alertcondition(confirmed_buy_signal or confirmed_sell_signal, title="Any Strong Signal", 
+              message="⚡ TRADING SIGNAL TRIGGERED")

@@ -1,0 +1,139 @@
+//@version=4
+study(title="Clean Simple Signals", shorttitle="Clean", overlay=true)
+
+// ===========================================
+// SIMPLE INPUTS - Only Essential Settings
+// ===========================================
+fast_ema = input(13, title="Fast EMA")
+slow_ema = input(34, title="Slow EMA") 
+trend_sma = input(55, title="Trend Filter SMA")
+signal_sensitivity = input(3, title="Signal Sensitivity (1=Most, 5=Least)", minval=1, maxval=5)
+
+// Display Options
+show_emas = input(true, title="Show Moving Averages")
+show_trend_bg = input(true, title="Show Trend Background")
+
+// ===========================================
+// CORE CALCULATIONS - Keep It Simple
+// ===========================================
+ema_fast = ema(close, fast_ema)
+ema_slow = ema(close, slow_ema)
+sma_trend = sma(close, trend_sma)
+
+// ===========================================
+// TREND IDENTIFICATION - Clear and Simple
+// ===========================================
+// Main trend: Above/Below trend SMA
+main_trend = close > sma_trend ? 1 : -1
+
+// EMA alignment for signal confirmation
+ema_bullish = ema_fast > ema_slow
+ema_bearish = ema_fast < ema_slow
+
+// ===========================================
+// SIGNAL GENERATION - ONE SYSTEM ONLY
+// ===========================================
+// Signal conditions based on sensitivity
+base_buy_condition = crossover(ema_fast, ema_slow) and main_trend == 1
+base_sell_condition = crossunder(ema_fast, ema_slow) and main_trend == -1
+
+// Additional filters based on sensitivity setting
+sensitivity_filter = switch signal_sensitivity
+    1 => true  // Most sensitive - just EMA cross + trend
+    2 => close > ema_slow and close < ema_slow  // Medium-high
+    3 => (close - ema_slow) / ema_slow > 0.001 or (ema_slow - close) / ema_slow > 0.001  // Medium
+    4 => (close - ema_slow) / ema_slow > 0.002 or (ema_slow - close) / ema_slow > 0.002  // Medium-low
+    5 => (close - ema_slow) / ema_slow > 0.005 or (ema_slow - close) / ema_slow > 0.005  // Least sensitive
+
+// FINAL SIGNALS - Only one type at a time
+buy_signal = base_buy_condition and sensitivity_filter
+sell_signal = base_sell_condition and sensitivity_filter
+
+// ===========================================
+// SIGNAL EXCLUSIVITY - Prevent Overlapping
+// ===========================================
+var int last_signal = 0  // 0=none, 1=buy, -1=sell
+var int bars_since_signal = 0
+
+// Only allow new signal if different from last AND enough bars passed
+signal_cooldown = 5  // Minimum bars between signals
+can_signal = bars_since_signal >= signal_cooldown
+
+// Update signal state
+if buy_signal and can_signal and last_signal != 1
+    last_signal := 1
+    bars_since_signal := 0
+else if sell_signal and can_signal and last_signal != -1
+    last_signal := -1
+    bars_since_signal := 0
+else
+    bars_since_signal := bars_since_signal + 1
+
+// Final clean signals
+final_buy = buy_signal and can_signal and last_signal != 1
+final_sell = sell_signal and can_signal and last_signal != -1
+
+// ===========================================
+// CLEAN VISUALIZATION
+// ===========================================
+// Moving Averages
+plot(show_emas ? ema_fast : na, "Fast EMA", color=color.blue, linewidth=2)
+plot(show_emas ? ema_slow : na, "Slow EMA", color=color.orange, linewidth=2)
+plot(show_emas ? sma_trend : na, "Trend SMA", color=color.gray, linewidth=3)
+
+// Trend Background
+trend_color = main_trend == 1 ? color.new(color.green, 95) : color.new(color.red, 95)
+bgcolor(show_trend_bg ? trend_color : na)
+
+// ===========================================
+// SIGNAL ALERTS - Clean and Simple
+// ===========================================
+// Only show ONE type of signal at a time
+plotshape(
+    final_buy, 
+    title="BUY", 
+    text="BUY", 
+    style=shape.labelup, 
+    location=location.belowbar, 
+    color=color.green, 
+    textcolor=color.white, 
+    size=size.normal
+)
+
+plotshape(
+    final_sell, 
+    title="SELL", 
+    text="SELL", 
+    style=shape.labeldown, 
+    location=location.abovebar, 
+    color=color.red, 
+    textcolor=color.white, 
+    size=size.normal
+)
+
+// ===========================================
+// ALERTS
+// ===========================================
+alertcondition(final_buy, title="Buy Signal", message="Clean BUY signal")
+alertcondition(final_sell, title="Sell Signal", message="Clean SELL signal")
+
+// ===========================================
+// SIMPLE INFO TABLE
+// ===========================================
+if barstate.islast
+    var table info = table.new(position.top_right, 2, 4, bgcolor=color.white, border_width=1)
+    table.cell(info, 0, 0, "Signal Status", bgcolor=color.gray, text_color=color.white)
+    table.cell(info, 1, 0, "", bgcolor=color.gray)
+    
+    table.cell(info, 0, 1, "Trend", text_color=color.black)
+    table.cell(info, 1, 1, main_trend == 1 ? "BULLISH" : "BEARISH", 
+               text_color=main_trend == 1 ? color.green : color.red)
+    
+    table.cell(info, 0, 2, "EMA Status", text_color=color.black)
+    table.cell(info, 1, 2, ema_bullish ? "BULLISH" : "BEARISH", 
+               text_color=ema_bullish ? color.green : color.red)
+    
+    table.cell(info, 0, 3, "Last Signal", text_color=color.black)
+    signal_text = last_signal == 1 ? "BUY" : last_signal == -1 ? "SELL" : "NONE"
+    signal_color = last_signal == 1 ? color.green : last_signal == -1 ? color.red : color.gray
+    table.cell(info, 1, 3, signal_text, text_color=signal_color)

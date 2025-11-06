@@ -1,0 +1,19 @@
+{
+  "cfg_scale": 7.5,
+  "embed_exif_metadata": false,
+  "format": "webp",
+  "height": 1024,
+  "hide_watermark": false,
+  "inpaint": "<any>",
+  "lora_strength": 50,
+  "model": "lustify-sdxl",
+  "negative_prompt": "Clouds, Rain, Snow",
+  "prompt": "A curvy woman, nude and lounging in a sunlit pool, her hips tilted back in a sensual doggy position, water droplets clinging to her skin as she leans into the warmth of the afternoon sun.",
+  "return_binary": false,
+  "variants": 1,
+  "safe_mode": true,
+  "seed": 0,
+  "steps": 20,
+  "style_preset": "3D Model",
+  "width": 1024
+}

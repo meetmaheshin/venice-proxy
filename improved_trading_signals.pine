@@ -1,0 +1,231 @@
+//@version=4
+study(title="Improved Trading Signals", shorttitle="Clean Signals", overlay=true, resolution="")
+
+// ===========================================
+// INPUT PARAMETERS (Optimized Defaults)
+// ===========================================
+
+// Parabolic SAR
+sar_start = input(0.02, title="SAR Start", step=0.001)
+sar_increment = input(0.02, title="SAR Increment", step=0.001)
+sar_maximum = input(0.2, title="SAR Max Value")
+
+// Moving Averages (Consolidated)
+fast_ema_len = input(13, title="Fast EMA Length")
+slow_ema_len = input(34, title="Slow EMA Length")
+trend_sma_len = input(55, title="Trend SMA Length")
+long_sma_len = input(200, title="Long Term SMA Length")
+
+// Keltner Channels
+kc_length = input(20, minval=1, title="KC Length")
+kc_mult = input(2.0, title="KC Multiplier")
+use_true_range = input(true, title="Use True Range")
+
+// Bollinger Bands
+bb_length = input(20, minval=1, title="BB Length")
+bb_mult = input(2.0, minval=0.001, maxval=50, title="BB Multiplier")
+
+// Pivot Points
+pivot_left = input(5, minval=1, title="Pivot Left Bars")
+pivot_right = input(5, minval=1, title="Pivot Right Bars")
+
+// Signal Filters
+min_trend_strength = input(0.5, title="Minimum Trend Strength", step=0.1)
+require_volume_confirmation = input(true, title="Require Volume Confirmation")
+signal_cooldown = input(3, title="Signal Cooldown Bars", minval=1)
+
+// Display Options
+show_signals = input(true, title="Show Buy/Sell Signals")
+show_levels = input(true, title="Show Support/Resistance Levels")
+show_channel = input(false, title="Show Channel Fill")
+
+// ===========================================
+// CORE CALCULATIONS
+// ===========================================
+
+// Parabolic SAR
+sar_value = sar(sar_start, sar_increment, sar_maximum)
+
+// Moving Averages
+fast_ema = ema(close, fast_ema_len)
+slow_ema = ema(close, slow_ema_len)
+trend_sma = sma(close, trend_sma_len)
+long_sma = sma(close, long_sma_len)
+
+// Keltner Channels
+kc_ma = ema(close, kc_length)
+kc_range = use_true_range ? tr : high - low
+kc_rangema = ema(kc_range, kc_length)
+kc_upper = kc_ma + kc_rangema * kc_mult
+kc_lower = kc_ma - kc_rangema * kc_mult
+
+// Bollinger Bands
+bb_middle = sma(close, bb_length)
+bb_dev = bb_mult * stdev(close, bb_length)
+bb_upper = bb_middle + bb_dev
+bb_lower = bb_middle - bb_dev
+
+// Pivot Points
+pivot_high = pivothigh(high, pivot_left, pivot_right)
+pivot_low = pivotlow(low, pivot_left, pivot_right)
+
+// ===========================================
+// TREND ANALYSIS
+// ===========================================
+
+// Primary trend direction
+primary_trend = close > long_sma ? 1 : close < long_sma ? -1 : 0
+
+// Secondary trend strength
+trend_alignment = (fast_ema > slow_ema and slow_ema > trend_sma) ? 1 : 
+                 (fast_ema < slow_ema and slow_ema < trend_sma) ? -1 : 0
+
+// Trend strength (0 to 1)
+price_vs_sma = (close - trend_sma) / trend_sma
+trend_strength = abs(price_vs_sma)
+
+// ===========================================
+// SIGNAL GENERATION (Improved Logic)
+// ===========================================
+
+// Basic conditions
+ema_bull_cross = crossover(fast_ema, slow_ema)
+ema_bear_cross = crossunder(fast_ema, slow_ema)
+sar_bull = close > sar_value
+sar_bear = close < sar_value
+
+// Volume confirmation (if available)
+vol_confirmation = not require_volume_confirmation or (volume > sma(volume, 20))
+
+// Signal cooldown to prevent spam
+var last_signal_bar = 0
+cooldown_ok = bar_index - last_signal_bar >= signal_cooldown
+
+// MAIN BUY SIGNAL (Multiple confirmations required)
+buy_signal = ema_bull_cross and 
+             sar_bull and 
+             primary_trend >= 0 and 
+             trend_alignment > 0 and
+             trend_strength > min_trend_strength and
+             vol_confirmation and
+             cooldown_ok and
+             close > kc_lower  // Above KC support
+
+// MAIN SELL SIGNAL (Multiple confirmations required)
+sell_signal = ema_bear_cross and 
+              sar_bear and 
+              primary_trend <= 0 and 
+              trend_alignment < 0 and
+              trend_strength > min_trend_strength and
+              vol_confirmation and
+              cooldown_ok and
+              close < kc_upper  // Below KC resistance
+
+// Update last signal bar
+if buy_signal or sell_signal
+    last_signal_bar := bar_index
+
+// ===========================================
+// SUPPORT/RESISTANCE LEVELS
+// ===========================================
+
+// Track S/R levels
+var float support_level = na
+var float resistance_level = na
+
+// Update levels on pivot confirmation
+if not na(pivot_high)
+    resistance_level := high[pivot_right]
+if not na(pivot_low)
+    support_level := low[pivot_right]
+
+// ===========================================
+// PLOTTING
+// ===========================================
+
+// Parabolic SAR
+plot(sar_value, "SAR", style=plot.style_cross, color=color.white, linewidth=1)
+
+// Moving Averages
+plot(fast_ema, "Fast EMA", color=color.blue, linewidth=2)
+plot(slow_ema, "Slow EMA", color=color.orange, linewidth=2)
+plot(trend_sma, "Trend SMA", color=color.purple, linewidth=2)
+plot(long_sma, "Long SMA", color=color.gray, linewidth=3)
+
+// Keltner Channels
+kc_upper_plot = plot(kc_upper, "KC Upper", color=color.green, transp=60)
+kc_middle_plot = plot(kc_ma, "KC Middle", color=color.white, transp=60)
+kc_lower_plot = plot(kc_lower, "KC Lower", color=color.red, transp=60)
+fill(kc_upper_plot, kc_lower_plot, color=show_channel ? color.blue : na, transp=95)
+
+// Bollinger Bands
+plot(bb_upper, "BB Upper", color=color.blue, transp=70)
+plot(bb_middle, "BB Middle", color=color.red, transp=70)
+plot(bb_lower, "BB Lower", color=color.blue, transp=70)
+
+// Support/Resistance Levels
+plot(show_levels ? support_level : na, "Support", color=color.green, style=plot.style_line, linewidth=2, transp=50)
+plot(show_levels ? resistance_level : na, "Resistance", color=color.red, style=plot.style_line, linewidth=2, transp=50)
+
+// ===========================================
+// SIGNAL ALERTS
+// ===========================================
+
+// Buy Signal
+plotshape(
+    show_signals and buy_signal ? low : na,
+    title="BUY",
+    text="BUY",
+    textcolor=color.white,
+    color=color.green,
+    style=shape.labelup,
+    size=size.normal,
+    location=location.belowbar
+)
+
+// Sell Signal
+plotshape(
+    show_signals and sell_signal ? high : na,
+    title="SELL",
+    text="SELL",
+    textcolor=color.white,
+    color=color.red,
+    style=shape.labeldown,
+    size=size.normal,
+    location=location.abovebar
+)
+
+// ===========================================
+// ALERT CONDITIONS
+// ===========================================
+
+alertcondition(buy_signal, title="Buy Alert", message="Strong BUY signal confirmed")
+alertcondition(sell_signal, title="Sell Alert", message="Strong SELL signal confirmed")
+alertcondition(buy_signal or sell_signal, title="Any Signal", message="Trading signal triggered")
+
+// ===========================================
+// TREND BACKGROUND (Optional)
+// ===========================================
+
+trend_color = primary_trend > 0 ? color.new(color.green, 95) : 
+              primary_trend < 0 ? color.new(color.red, 95) : 
+              color.new(color.gray, 95)
+
+bgcolor(show_channel ? trend_color : na, title="Trend Background")
+
+// ===========================================
+// TABLE WITH SIGNAL INFORMATION (Optional)
+// ===========================================
+
+if barstate.islast and show_signals
+    var table info_table = table.new(position.top_right, 2, 6, bgcolor=color.white, border_width=1)
+    table.cell(info_table, 0, 0, "Signal Info", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 0, "", text_color=color.black)
+    table.cell(info_table, 0, 1, "Primary Trend", text_color=color.black)
+    table.cell(info_table, 1, 1, primary_trend > 0 ? "BULLISH" : primary_trend < 0 ? "BEARISH" : "NEUTRAL", 
+               text_color=primary_trend > 0 ? color.green : primary_trend < 0 ? color.red : color.black)
+    table.cell(info_table, 0, 2, "Trend Strength", text_color=color.black)
+    table.cell(info_table, 1, 2, tostring(round(trend_strength * 100, 2)) + "%", text_color=color.black)
+    table.cell(info_table, 0, 3, "EMA Alignment", text_color=color.black)
+    table.cell(info_table, 1, 3, trend_alignment > 0 ? "BULLISH" : trend_alignment < 0 ? "BEARISH" : "NEUTRAL",
+               text_color=trend_alignment > 0 ? color.green : trend_alignment < 0 ? color.red : color.black)
